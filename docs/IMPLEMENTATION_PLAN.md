@@ -1,22 +1,22 @@
-# Phased implementation
-Each phase finishes with a reviewable acceptance check before the next begins.
-
-| Phase | Work | Exit check |
+# Implementation and rollout
+## Implemented in this version
+| Phase | Implemented code | Validation performed |
 | --- | --- | --- |
-| 0 — Foundation (this commit) | Folder layout, shell, manifest, policy helpers, schemas, setup, tests | Local checks pass; no live writes or deployment |
-| 1 — Identity and directory | Approve authentication/deployment model; implement requireUser_; Users/Departments adapter; Admin user management | Four roles tested; inactive/unknown denied; forged roles rejected; MD cannot manage users |
-| 2 — Delegation | Scoped lists and doer dropdowns; create/update/complete; target revisions; locks/versioning; audit | Department and own-task isolation; invalid inputs denied; stale writes fail; partial-write recovery tested |
-| 3 — Recurring | Rule CRUD with same scope; calendar scheduling; idempotent generation; catch-up limits | Month-end/leap-year tests; duplicate/concurrent runs safe; pause/end respected |
-| 4 — Dashboards and reports | Cards, filters, user/date performance, charts, export; manual refresh button | Totals reconcile with scoped task rows; exports and filters leak no other users' data |
-| 5 — Notifications | Outbox, assignment/completion/deadline-change messages; approved overdue escalation | Disabled mode sends nothing; sandbox recipients only until approved; quota/retry/crash recovery verified |
-| 6 — Pilot and production | Optional Drive attachments and voice-to-text; performance, backups, runbook; approved deployment and triggers | Pilot signoff, restore drill, access review, documented operational owner and rollback |
+| Foundation | Layout, responsive shell, schema, configuration and setup | Manifest/source parsing; unconfigured auth denied |
+| Identity/directory | Workspace identity, active users, roles, Admin user/department forms | In-memory role, inactive, unknown/domain, duplicate-email and last-Admin checks |
+| Delegation | Create/update, staff transitions, deadline history, versions, scoped dropdowns, journal | Scope, stale writes, duplicate retries, partial-write replay and DOM form flows |
+| Recurring | Rule CRUD, pause/end states, bounded catch-up, month-end anniversaries | Leap-year/month-end dates, end boundary, duplicates and worker ownership checks |
+| Dashboard/reports | Scoped cards, performance table, filters, manual refresh, CSV | Scoped totals/denominator and DOM export/rendering checks |
+| Notifications | Event outbox, overdue/escalation workers, quota bounds, allowlist/retries | Disabled mode, allowlist, duplicate daily events, closed-task skips in memory |
 
-## Pending decisions
-- Google Workspace identity feasibility and deployment execution mode.
-- Spreadsheet IDs per environment; administrator and service owner.
-- Department versus explicit team hierarchy, transfer policy, and self-task permission.
-- Deadline time-of-day, holidays, escalation recipients, reminder cadence and due-soon window.
-- Data retention, attachment sharing, notification content and expected scale.
+## Deployment phases still required
+1. Configure a development spreadsheet/domain/owners and run setup in Apps Script.
+2. Verify real Google identity and account authorization for every role under the selected deployment audience/execution mode.
+3. Validate real Sheets value/formatting behavior, locks/recovery and expected data volumes.
+4. Verify Bootstrap layout and mobile behavior in a real browser; DOM checks do not validate appearance.
+5. Approve email recipients/cadence/templates; test sandbox delivery and failure recovery; install workers under one approved owner.
+6. Back up data, test restore, document ownership/rollback, then approve a limited pilot before production.
 
-## Completion criteria
-This foundation is not a production release. Implement missing adapters and endpoint permissions, validate with synthetic data in Apps Script, and document deployment/operational decisions before enabling real users.
+## Optional next work
+Voice-to-text, Drive binary upload, charts, calendar/Kanban, bulk user import and richer date/department/assignee analytics. Add an alternative verified authentication adapter only if Workspace identity cannot meet deployment needs.
+Large-volume operation requires storage/query improvements beyond full-table Sheet scans; set scale expectations before extending the pilot.

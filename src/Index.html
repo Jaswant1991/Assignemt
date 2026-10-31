@@ -8,25 +8,109 @@
   <?!= include_('Styles'); ?>
 </head>
 <body>
-  <header class="bg-primary text-white p-3"><div class="container">
-    <h1 class="h4 mb-1">Task Management ERP</h1>
-    <p class="mb-0">Tech Auto Private Limited</p>
-  </div></header>
-  <main class="container py-4">
-    <div class="alert alert-warning" role="status">Starter scaffold · Authentication and live data are not connected.</div>
-    <nav aria-label="ERP modules" class="d-flex flex-wrap gap-2 mb-4">
-      <button disabled class="btn btn-outline-primary">Dashboard</button>
-      <button disabled class="btn btn-outline-primary">Delegation</button>
-      <button disabled class="btn btn-outline-primary">Recurring tasks</button>
-      <button disabled class="btn btn-outline-primary">Users</button>
-      <button disabled class="btn btn-outline-primary">Reports</button>
+<header class="topbar"><div class="container-fluid px-lg-5 d-flex justify-content-between align-items-center gap-3">
+  <div><span class="brand-mark">TA</span><strong>Tech Auto</strong><span class="brand-sub">Task Management ERP</span></div>
+  <div id="identity" class="small"></div>
+</div></header>
+<main class="container-fluid px-lg-5 py-4">
+  <div id="message" role="status" aria-live="polite" class="alert d-none"></div>
+  <section id="login" class="login-card card shadow-sm mx-auto p-4">
+    <span class="eyebrow">YOUR WORK, IN ONE PLACE</span>
+    <h1 class="mt-3">Welcome to your workspace</h1>
+    <p class="text-secondary">Manage tasks, build consistent routines and follow your team's progress.</p>
+    <button id="loginButton" class="btn btn-primary btn-lg">Continue with your Google account</button>
+    <p class="small text-secondary mt-3 mb-0">Uses the Google account signed into this web app. Your administrator must activate your account. No ERP password is required.</p>
+  </section>
+  <div id="workspace" hidden>
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
+      <div><span class="eyebrow">TEAM WORKSPACE</span><h1 id="welcome" class="h2 mb-0 mt-1">Overview</h1></div>
+      <div class="d-flex gap-2"><button id="refresh" class="btn btn-primary">Refresh data</button><button id="logout" class="btn btn-outline-secondary">Lock workspace</button></div>
+    </div>
+    <nav class="nav-pills-bar mb-4" aria-label="Modules">
+      <button data-page="overview" class="active">Overview</button>
+      <button data-page="tasks">Delegation</button>
+      <button data-page="recurring">Recurring tasks</button>
+      <button data-page="users" id="usersNav" hidden>User management</button>
     </nav>
-    <section class="card shadow-sm"><div class="card-body">
-      <h2 class="h5">Implementation starts with secure access</h2>
-      <p>Admin, MD, Manager/HOD and Staff/Employee permissions will be enforced by the backend.</p>
-      <p id="connection-status" class="mb-0" aria-live="polite">No business data loaded.</p>
-    </div></section>
-  </main>
-  <?!= include_('JavaScript'); ?>
+    <section id="overview" class="page">
+      <div id="metrics" class="row g-3 mb-4"></div>
+      <div class="card p-4"><div class="d-flex justify-content-between"><h2 class="h5">Team performance</h2><span class="text-secondary small">Authorized tasks only</span></div>
+        <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Doer</th><th>Total</th><th>Pending</th><th>Completed</th><th>Overdue</th></tr></thead><tbody id="performance"></tbody></table></div>
+      </div>
+    </section>
+    <section id="tasks" class="page" hidden>
+      <div class="card p-4 mb-4">
+        <div class="d-flex justify-content-between flex-wrap gap-2 mb-3"><h2 class="h5 mb-0">Task register</h2><button id="exportTasks" class="btn btn-sm btn-outline-primary">Export filtered CSV</button></div>
+        <div class="row g-2 mb-3">
+          <div class="col-md-4"><label class="form-label" for="taskSearch">Search description or doer</label><input id="taskSearch" class="form-control" placeholder="Search tasks"></div>
+          <div class="col-md-2"><label class="form-label" for="statusFilter">Status</label><select id="statusFilter" class="form-select"><option value="">All statuses</option><option>OPEN</option><option>IN_PROGRESS</option><option>COMPLETED</option><option>CANCELLED</option></select></div>
+          <div class="col-md-2"><label class="form-label" for="dueFilter">Deadline</label><select id="dueFilter" class="form-select"><option value="">All dates</option><option value="overdue">Overdue</option><option value="soon">Due in 7 days</option></select></div>
+          <div class="col-md-2"><label class="form-label" for="fromDate">Assigned from</label><input id="fromDate" type="date" class="form-control"></div>
+          <div class="col-md-2"><label class="form-label" for="toDate">Assigned through</label><input id="toDate" type="date" class="form-control"></div>
+        </div>
+        <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Description</th><th>Doer</th><th>Due</th><th>Priority</th><th>Status</th><th>Action</th></tr></thead><tbody id="taskRows"></tbody></table></div>
+      </div>
+      <form id="taskForm" class="card p-4">
+        <h2 id="taskFormTitle" class="h5">Assign a task</h2>
+        <input type="hidden" name="taskId"><input type="hidden" name="version">
+        <div class="row g-3">
+          <div class="col-md-8"><label class="form-label" for="taskDescription">Task description</label><textarea id="taskDescription" name="description" class="form-control" maxlength="3000" required rows="2"></textarea></div>
+          <div class="col-md-4"><label class="form-label" for="taskDoer">Doer</label><select id="taskDoer" name="doerUserId" class="form-select" required></select><div id="doerEmail" class="small text-secondary mt-1"></div></div>
+          <div class="col-md-3"><label class="form-label" for="taskDue">Due date</label><input id="taskDue" name="targetDate" type="date" class="form-control" required></div>
+          <div class="col-md-3"><label class="form-label" for="taskPriority">Priority</label><select id="taskPriority" name="priority" class="form-select"><option>NORMAL</option><option>LOW</option><option>HIGH</option><option>URGENT</option></select></div>
+          <div class="col-md-3" id="taskStatusWrap"><label class="form-label" for="taskStatus">Status</label><select id="taskStatus" name="status" class="form-select"><option>OPEN</option><option>IN_PROGRESS</option><option>COMPLETED</option><option>CANCELLED</option></select></div>
+          <div class="col-md-3"><label class="form-label" for="taskAttachment">Drive attachment URL</label><input id="taskAttachment" name="attachmentUrl" type="url" class="form-control" maxlength="500"></div>
+          <div class="col-md-6"><label class="form-label" for="taskReason">Reason for deadline revision</label><input id="taskReason" name="revisionReason" class="form-control" maxlength="500"></div>
+          <div class="col-md-6"><label class="form-label" for="taskRemarks">Progress / remarks</label><input id="taskRemarks" name="remarks" class="form-control" maxlength="2000"></div>
+        </div>
+        <div class="d-flex gap-2 mt-3"><button class="btn btn-primary" type="submit">Save task</button><button id="resetTask" class="btn btn-outline-secondary" type="button">Cancel / clear</button></div>
+      </form>
+    </section>
+    <section id="recurring" class="page" hidden>
+      <div class="card p-4 mb-4"><h2 class="h5">Recurring schedules</h2><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Name</th><th>Doer</th><th>Frequency</th><th>Next due</th><th>Status</th><th>Action</th></tr></thead><tbody id="ruleRows"></tbody></table></div></div>
+      <form id="ruleForm" class="card p-4">
+        <h2 class="h5">Create / edit schedule</h2><input name="ruleId" type="hidden"><input name="expectedVersion" type="hidden">
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label" for="ruleName">Task name</label><input id="ruleName" name="taskName" class="form-control" required maxlength="200"></div>
+          <div class="col-md-6"><label class="form-label" for="ruleDoer">Doer</label><select id="ruleDoer" name="doerUserId" class="form-select" required></select></div>
+          <div class="col-12"><label class="form-label" for="ruleDescription">Description</label><textarea id="ruleDescription" name="description" class="form-control" required maxlength="3000"></textarea></div>
+          <div class="col-md-3"><label class="form-label" for="ruleFrequency">Frequency</label><select id="ruleFrequency" name="frequency" class="form-select"><option>DAILY</option><option>WEEKLY</option><option>MONTHLY</option><option>QUARTERLY</option><option>YEARLY</option></select></div>
+          <div class="col-md-3"><label class="form-label" for="ruleStart">Start date</label><input id="ruleStart" name="startDate" type="date" class="form-control" required></div>
+          <div class="col-md-3"><label class="form-label" for="ruleEnd">End date (optional)</label><input id="ruleEnd" name="endDate" type="date" class="form-control"></div>
+          <div class="col-md-3"><label class="form-label" for="ruleStatus">Status</label><select id="ruleStatus" name="status" class="form-select"><option>ACTIVE</option><option>PAUSED</option><option>ENDED</option></select></div>
+          <div class="col-md-3"><label class="form-label" for="rulePriority">Priority</label><select id="rulePriority" name="priority" class="form-select"><option>NORMAL</option><option>LOW</option><option>HIGH</option><option>URGENT</option></select></div>
+          <div class="col-md-9"><label class="form-label" for="ruleAttachment">Drive attachment URL</label><input id="ruleAttachment" name="attachmentUrl" type="url" class="form-control" maxlength="500"></div>
+        </div><p class="small text-secondary mt-3">Schedules generate independent tasks when the hourly worker runs. Existing schedule dates/frequency are fixed; pause it and create a new schedule to change them.</p>
+        <div><button class="btn btn-primary" type="submit">Save schedule</button> <button id="resetRule" type="button" class="btn btn-outline-secondary">Clear</button></div>
+      </form>
+    </section>
+    <section id="users" class="page" hidden>
+      <div class="card p-4 mb-4"><h2 class="h5">User directory</h2><p class="small text-secondary">Deactivate users to preserve their task history.</p><div class="table-responsive"><table class="table align-middle"><thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>Status</th><th>Action</th></tr></thead><tbody id="userRows"></tbody></table></div></div>
+      <form id="userForm" class="card p-4 mb-4">
+        <h2 class="h5">Create / edit user</h2><input name="userId" type="hidden"><input name="expectedUpdatedAt" type="hidden">
+        <div class="row g-3">
+          <div class="col-md-4"><label class="form-label" for="userName">Name</label><input id="userName" name="name" class="form-control" required maxlength="100"></div>
+          <div class="col-md-4"><label class="form-label" for="userEmail">Google Workspace email</label><input id="userEmail" name="email" type="email" class="form-control" required></div>
+          <div class="col-md-4"><label class="form-label" for="userRole">Role</label><select id="userRole" name="role" class="form-select"><option>STAFF</option><option>MANAGER</option><option>MD</option><option>ADMIN</option><option>HOD</option><option>EMPLOYEE</option></select></div>
+          <div class="col-md-3"><label class="form-label" for="userDepartment">Department</label><select id="userDepartment" name="departmentId" class="form-select"></select></div>
+          <div class="col-md-3"><label class="form-label" for="userManager">Reporting manager</label><select id="userManager" name="managerUserId" class="form-select"></select></div>
+          <div class="col-md-3"><label class="form-label" for="userMobile">Mobile</label><input id="userMobile" name="mobile" class="form-control" maxlength="30"></div>
+          <div class="col-md-3"><label class="form-label" for="userStatus">Status</label><select id="userStatus" name="status" class="form-select"><option>ACTIVE</option><option>INACTIVE</option></select></div>
+        </div><div class="mt-3"><button class="btn btn-primary" type="submit">Save user</button> <button id="resetUser" type="button" class="btn btn-outline-secondary">Clear</button></div>
+      </form>
+      <div class="card p-4"><h2 class="h5">Departments</h2><div id="departmentList" class="mb-3"></div>
+        <form id="departmentForm" class="row g-2 align-items-end">
+          <input name="departmentId" type="hidden">
+          <div class="col-md-4"><label class="form-label" for="deptName">Department name</label><input id="deptName" name="departmentName" class="form-control" required maxlength="100"></div>
+          <div class="col-md-3"><label class="form-label" for="deptManager">Manager</label><select id="deptManager" name="managerUserId" class="form-select"></select></div>
+          <div class="col-md-2"><label class="form-label" for="deptStatus">Status</label><select id="deptStatus" name="status" class="form-select"><option>ACTIVE</option><option>INACTIVE</option></select></div>
+          <div class="col-md-3"><button class="btn btn-primary" type="submit">Save department</button> <button id="resetDept" type="button" class="btn btn-outline-secondary">Clear</button></div>
+        </form>
+      </div>
+    </section>
+  </div>
+</main>
+<footer class="px-4 py-3 text-center text-secondary small">© Tech Auto Private Limited · Task Management ERP</footer>
+<?!= include_('JavaScript'); ?>
 </body>
 </html>

@@ -40,17 +40,16 @@ test('user management is Admin only; invalid identities fail closed', () => {
     assert.equal(ctx.canAssignTo_(actor,user('STAFF')),false);
   }
 });
-test('public business endpoints deny access before implementation', () => {
-  for (const fn of ['listTasks','createTask','updateTask','getDashboard']) {
-    assert.throws(() => ctx[fn]({}), /Access denied/);
-  }
+test('authentication is unconfigured by default', () => {
+  ctx.PropertiesService = {getScriptProperties:() => ({getProperty:() => null})};
+  assert.throws(() => ctx.requireUser_({}), /Access denied/);
 });
 test('configuration and notification defaults are safe', () => {
   ctx.PropertiesService = {getScriptProperties:() => ({getProperty:() => null})};
   assert.equal(ctx.getConfig_().authMode,'UNCONFIGURED');
-  assert.throws(() => ctx.requireSpreadsheetId_(),/not configured/);
+  assert.throws(() => ctx.requireSpreadsheetId_(),/Configure/);
   assert.equal(ctx.processNotificationOutbox_().disabled,true);
-  assert.throws(() => ctx.generateRecurringOccurrences_(),/not implemented/);
+  assert.throws(() => ctx.generateRecurringOccurrences_(),/Worker/);
 });
 test('manifest parses and template includes are restricted', () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(root,'appsscript.json'),'utf8'));

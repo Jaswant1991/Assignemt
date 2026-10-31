@@ -1,5 +1,24 @@
 <style>
-body { background: #f3f6fb; color: #172b4d; }
-.card { border: 0; border-radius: 1rem; }
-button:disabled { opacity: .65; }
+:root { --navy: #142d4e; --blue: #245fdb; }
+body { background: #f3f6fb; color: var(--navy); font-family: system-ui, sans-serif; }
+.topbar { background: var(--navy); color: white; padding: 1.15rem 0; }
+.brand-mark { display: inline-grid; place-items: center; width: 36px; height: 36px; background: #f18a42; border-radius: 10px; margin-right: .6rem; font-weight: 800; }
+.brand-sub { margin-left: 1rem; opacity: .75; font-size: .85rem; }
+.card { border: 1px solid #e6ebf2; border-radius: 16px; box-shadow: 0 3px 15px #172b4d05; }
+.login-card { max-width: 570px; margin-top: 7vh; }
+.login-card h1 { font-size: 2.2rem; font-weight: 750; }
+.eyebrow { font-size: .7rem; letter-spacing: .13em; font-weight: 750; color: #667c99; }
+.btn-primary { background: var(--blue); border-color: var(--blue); }
+.nav-pills-bar { display:flex; gap:.4rem; flex-wrap:wrap; }
+.nav-pills-bar button { border:0; padding:.7rem 1.2rem; border-radius:10px; background:transparent; color:#627895; font-weight:600; }
+.nav-pills-bar button.active { background:white; color:var(--blue); box-shadow:0 2px 6px #172b4d10; }
+.metric-number { font-size:2rem; font-weight:750; }
+.table { --bs-table-bg: transparent; }
+.table th { font-size:.72rem; text-transform:uppercase; color:#6d809b; letter-spacing:.04em; }
+.table td { font-size:.88rem; max-width: 380px; overflow-wrap:anywhere; white-space:pre-wrap; }
+.form-label { font-size:.82rem; font-weight:600; }
+body.busy { cursor:progress; }
+body.busy main { opacity:.65; pointer-events:none; }
+[hidden] { display:none !important; }
+@media(max-width:600px) { .brand-sub {display:none;} .topbar #identity {max-width:50%;overflow-wrap:anywhere;} }
 </style>

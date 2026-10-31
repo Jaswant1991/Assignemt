@@ -1,9 +1,225 @@
 <script>
 'use strict';
-// TODO: After authentication, request authorized data with google.script.run.
-// Always attach success/failure handlers; render untrusted content with textContent.
-// Navigation visibility improves UX; backend checks provide access control.
-// No mock login, client-side role switch or business writes are wired.
-document.getElementById('connection-status').textContent =
-  'Scaffold ready. Complete secure authentication before enabling modules.';
+const $ = id => document.getElementById(id);
+let state = null, adminUsers = [], busy = false;
+let taskRequest = crypto.randomUUID(), ruleRequest = crypto.randomUUID();
+function node(tag, text, cls) {
+  const el = document.createElement(tag);
+  if (text !== undefined) el.textContent = text;
+  if (cls) el.className = cls;
+  return el;
+}
+function message(text, error=false) {
+  $('message').className = 'alert ' + (error ? 'alert-danger' : 'alert-success');
+  $('message').textContent = text;
+}
+function rpc(name, ...args) {
+  return new Promise((resolve,reject) => {
+    if (!window.google || !google.script || !google.script.run) {reject(new Error('Open the deployed Apps Script web app to connect.')); return;}
+    google.script.run.withSuccessHandler(resolve).withFailureHandler(reject)[name](...args);
+  });
+}
+async function action(fn) {
+  if (busy) return;
+  busy = true; document.body.classList.add('busy');
+  const buttons = [...document.querySelectorAll('button')].map(b=>[b,b.disabled]);
+  buttons.forEach(([b])=>b.disabled=true);
+  try { await fn(); } catch(e) { message(e.message || String(e),true); }
+  finally { busy=false;document.body.classList.remove('busy');buttons.forEach(([b,d])=>b.disabled=d); }
+}
+function manager() {return state && ['ADMIN','MD','MANAGER'].includes(state.role);}
+function nameOf(id) {return (state.names.find(u=>u.userId===id)||{}).name || id;}
+function deptOf(id) {return (state.departments.find(d=>d.departmentId===id)||{}).departmentName || id || '—';}
+function options(select, items, valueKey, label, placeholder) {
+  select.replaceChildren();
+  if (placeholder !== undefined) {const o=node('option',placeholder);o.value='';select.append(o);}
+  items.forEach(item=>{const o=node('option',label(item));o.value=item[valueKey];select.append(o);});
+}
+function button(text, fn) {
+  const b=node('button',text,'btn btn-sm btn-outline-primary'); b.type='button'; b.addEventListener('click',fn);return b;
+}
+function emptyRow(tbody, cols, text) {
+  const tr=node('tr'),td=node('td',text,'text-secondary py-4');td.colSpan=cols;tr.append(td);tbody.append(tr);
+}
+function cells(tr, values) {values.forEach(v=>tr.append(node('td',String(v ?? ''))));}
+function localDate(value) {
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(new Date(value));
+  const get=type=>parts.find(p=>p.type===type).value;
+  return get('year')+'-'+get('month')+'-'+get('day');
+}
+function localToday() {return localDate(new Date());}
+function due(t) {return t.revisionDate || t.targetDate;}
+function filteredTasks() {
+  const q=$('taskSearch').value.toLowerCase(),status=$('statusFilter').value,deadline=$('dueFilter').value;
+  const today=localToday(),date=new Date(today+'T00:00:00Z');date.setUTCDate(date.getUTCDate()+7);
+  const soon=date.toISOString().slice(0,10);
+  return state.tasks.filter(t=>{
+    const pending=['OPEN','IN_PROGRESS'].includes(t.status),assigned=localDate(t.assignedAt);
+    return (!q || (t.description+' '+nameOf(t.doerUserId)).toLowerCase().includes(q)) &&
+      (!status || t.status===status) &&
+      (!deadline || (pending && (deadline==='overdue' ? due(t)<today : due(t)>=today && due(t)<=soon))) &&
+      (!$('fromDate').value || assigned >= $('fromDate').value) &&
+      (!$('toDate').value || assigned <= $('toDate').value);
+  });
+}
+function renderTasks() {
+  const body=$('taskRows');body.replaceChildren();
+  filteredTasks().forEach(t=>{
+    const tr=node('tr');cells(tr,[t.description,nameOf(t.doerUserId),due(t),t.priority,t.status]);
+    const td=node('td');
+    if (manager() || ['OPEN','IN_PROGRESS'].includes(t.status)) td.append(button('Open / update',()=>editTask(t)));
+    else td.append(node('span','Closed','text-secondary'));
+    if (t.attachmentUrl && /^https:\/\/drive\.google\.com\//.test(t.attachmentUrl)) {
+      const a=node('a','Attachment','d-block small mt-2');a.href=t.attachmentUrl;a.target='_blank';a.rel='noopener noreferrer';td.append(a);
+    }
+    tr.append(td);body.append(tr);
+  });
+  if (!body.children.length) emptyRow(body,6,'No tasks match these filters.');
+}
+function resetTask() {
+  const f=$('taskForm');f.reset();f.elements.taskId.value='';f.elements.version.value='';
+  taskRequest=crypto.randomUUID();f.hidden=!manager();
+  [...f.elements].forEach(e=>e.disabled=false);
+  $('taskStatusWrap').hidden=true;$('taskReason').required=false;$('taskReason').disabled=true;
+  $('taskRemarks').disabled=true;$('taskFormTitle').textContent='Assign a task';showDoerEmail();
+}
+function editTask(t) {
+  const f=$('taskForm');f.hidden=false;
+  [...f.elements].forEach(e=>e.disabled=false);
+  options(f.elements.doerUserId,state.doers,'userId',u=>u.name+' · '+u.email);
+  if (![...f.elements.doerUserId.options].some(o=>o.value===t.doerUserId)) {
+    const o=node('option',nameOf(t.doerUserId));o.value=t.doerUserId;f.elements.doerUserId.append(o);
+  }
+  for (const k of ['taskId','version','description','doerUserId','attachmentUrl','priority','status','remarks']) f.elements[k].value=t[k];
+  f.elements.targetDate.value=due(t);f.elements.revisionReason.value='';
+  $('taskStatusWrap').hidden=false;$('taskFormTitle').textContent='Update task';
+  if (!manager()) {
+    for (const k of ['description','doerUserId','targetDate','priority','attachmentUrl','revisionReason']) f.elements[k].disabled=true;
+    options(f.elements.status,[{v:'IN_PROGRESS'},{v:'COMPLETED'}],'v',o=>o.v);
+    f.elements.status.value=t.status==='COMPLETED' ? 'COMPLETED' : 'IN_PROGRESS';
+  } else options(f.elements.status,['OPEN','IN_PROGRESS','COMPLETED','CANCELLED'].map(v=>({v})),'v',o=>o.v);
+  if (manager()) f.elements.status.value=t.status;
+  showDoerEmail();f.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function showDoerEmail() {
+  const u=state && state.doers.find(u=>u.userId===$('taskDoer').value);
+  $('doerEmail').textContent=u ? u.email : '';
+}
+function resetRule() {
+  $('ruleForm').reset();$('ruleForm').elements.ruleId.value='';$('ruleForm').elements.expectedVersion.value='';
+  $('ruleStart').readOnly=false;$('ruleFrequency').disabled=false;ruleRequest=crypto.randomUUID();
+}
+function editRule(r) {
+  const f=$('ruleForm');resetRule();
+  for (const k of ['ruleId','taskName','description','doerUserId','frequency','startDate','endDate','priority','attachmentUrl','status']) f.elements[k].value=r[k];
+  f.elements.expectedVersion.value=r.version;
+  $('ruleStart').readOnly=true;$('ruleFrequency').disabled=true;f.scrollIntoView({behavior:'smooth'});
+}
+function render() {
+  $('identity').textContent=state.user.name+' · '+state.role;
+  $('welcome').textContent='Welcome, '+state.user.name;
+  $('login').hidden=true;$('workspace').hidden=false;$('usersNav').hidden=state.role!=='ADMIN';
+  const metrics=$('metrics');metrics.replaceChildren();
+  [['Total tasks','total'],['Pending','pending'],['Completed','completed'],['Overdue','overdue'],['Due in 7 days','dueSoon'],['Completion %','completionRate']].forEach(([label,key])=>{
+    const col=node('div',undefined,'col-6 col-lg-2'),card=node('div',undefined,'card p-3');
+    card.append(node('span',label,'small text-secondary'),node('strong',state.dashboard[key]+(key==='completionRate'?'%':''),'metric-number'));col.append(card);metrics.append(col);
+  });
+  const p=$('performance');p.replaceChildren();
+  Object.entries(state.dashboard.byUser).forEach(([id,b])=>{const tr=node('tr');cells(tr,[nameOf(id),b.total,b.pending,b.completed,b.overdue]);p.append(tr);});
+  if (!p.children.length) emptyRow(p,5,'No tasks yet.');
+  options($('taskDoer'),state.doers,'userId',u=>u.name+' · '+u.email);
+  options($('ruleDoer'),state.doers,'userId',u=>u.name+' · '+u.email);
+  resetTask();resetRule();$('ruleForm').hidden=!manager();renderTasks();
+  const r=$('ruleRows');r.replaceChildren();
+  state.recurring.forEach(rule=>{
+    const tr=node('tr');cells(tr,[rule.taskName,nameOf(rule.doerUserId),rule.frequency,rule.nextDueDate,rule.status]);
+    const td=node('td');if(manager())td.append(button('Edit',()=>editRule(rule)));tr.append(td);r.append(tr);
+  });
+  if (!r.children.length) emptyRow(r,6,'No recurring schedules yet.');
+}
+async function refresh() {
+  try {
+    state=await rpc('getWorkspace');render();
+    if (state.role==='ADMIN') await loadUsers();
+    else {adminUsers=[];$('userRows').replaceChildren();$('userForm').reset();$('departmentList').replaceChildren();if(!$('users').hidden)page('overview');}
+  } catch(e) { lockWorkspace();throw e; }
+}
+function lockWorkspace() {
+  state=null;adminUsers=[];$('workspace').hidden=true;$('login').hidden=false;$('identity').textContent='';
+  for (const id of ['taskRows','ruleRows','userRows','performance','departmentList','metrics']) $(id).replaceChildren();
+  for (const id of ['taskForm','ruleForm','userForm','departmentForm']) $(id).reset();
+  page('overview');
+}
+function page(id) {
+  document.querySelectorAll('.page').forEach(p=>p.hidden=p.id!==id);
+  document.querySelectorAll('[data-page]').forEach(b=>b.classList.toggle('active',b.dataset.page===id));
+}
+async function loadUsers() {
+  adminUsers=await rpc('listUsers');
+  const departments=await rpc('listDepartments');state.departments=departments;
+  options($('userDepartment'),departments.filter(d=>d.status==='ACTIVE'),'departmentId',d=>d.departmentName,'No department');
+  const managers=adminUsers.filter(u=>u.status==='ACTIVE' && ['ADMIN','MANAGER','HOD'].includes(u.role));
+  for (const id of ['userManager','deptManager']) options($(id),managers,'userId',u=>u.name,'None');
+  const body=$('userRows');body.replaceChildren();
+  adminUsers.forEach(u=>{
+    const tr=node('tr');cells(tr,[u.name,u.email,u.role,deptOf(u.departmentId),u.status]);
+    const td=node('td');td.append(button('Edit',()=>{
+      const f=$('userForm');for(const k of ['userId','name','email','role','departmentId','managerUserId','mobile','status']) f.elements[k].value=u[k];
+      f.elements.expectedUpdatedAt.value=u.updatedAt;f.scrollIntoView({behavior:'smooth'});
+    }));tr.append(td);body.append(tr);
+  });
+  const list=$('departmentList');list.replaceChildren();
+  departments.forEach(d=>{
+    const row=node('div',undefined,'d-flex gap-3 align-items-center mb-2');
+    row.append(node('span',d.departmentName+' · '+d.status));
+    row.append(button('Edit',()=>{const f=$('departmentForm');for(const k of ['departmentId','departmentName','managerUserId','status'])f.elements[k].value=d[k];}));list.append(row);
+  });
+}
+$('loginButton').onclick=()=>action(async()=>{await refresh();message('Workspace connected.');});
+$('refresh').onclick=()=>action(async()=>{await refresh();message('Data refreshed.');});
+$('logout').onclick=()=>{lockWorkspace();message('Workspace locked. Google account sign-out is managed by Google.');};
+document.querySelectorAll('[data-page]').forEach(b=>b.onclick=()=>page(b.dataset.page));
+for(const id of ['taskSearch','statusFilter','dueFilter','fromDate','toDate'])$(id).addEventListener('input',()=>state&&renderTasks());
+$('taskDoer').onchange=showDoerEmail;
+$('resetTask').onclick=resetTask;$('resetRule').onclick=resetRule;
+$('resetUser').onclick=()=>{$('userForm').reset();$('userForm').elements.userId.value='';$('userForm').elements.expectedUpdatedAt.value='';};
+$('resetDept').onclick=()=>{$('departmentForm').reset();$('departmentForm').elements.departmentId.value='';};
+$('taskForm').onsubmit=e=>{
+  e.preventDefault();const f=e.target,values=Object.fromEntries(new FormData(f));
+  action(async()=>{
+    if(values.taskId) {
+      let changes={status:values.status,remarks:values.remarks};
+      if(manager())changes=Object.assign(changes,{description:values.description,doerUserId:values.doerUserId,targetDate:values.targetDate,priority:values.priority,attachmentUrl:values.attachmentUrl,revisionReason:values.revisionReason});
+      await rpc('updateTask',values.taskId,changes,Number(values.version));
+    } else await rpc('createTask',{requestId:taskRequest,doerUserId:values.doerUserId,targetDate:values.targetDate,description:values.description,priority:values.priority,attachmentUrl:values.attachmentUrl});
+    await refresh();message('Task saved.');
+  });
+};
+$('ruleForm').onsubmit=e=>{
+  e.preventDefault();const input=Object.fromEntries(new FormData(e.target));
+  input.frequency=$('ruleFrequency').value;
+  if(!input.ruleId){delete input.ruleId;delete input.expectedVersion;input.requestId=ruleRequest;}
+  action(async()=>{await rpc('saveRecurring',input);await refresh();message('Schedule saved.');});
+};
+$('userForm').onsubmit=e=>{
+  e.preventDefault();const input=Object.fromEntries(new FormData(e.target));
+  if(!input.userId){delete input.userId;delete input.expectedUpdatedAt;}
+  action(async()=>{await rpc('saveUser',input);$('userForm').reset();$('userForm').elements.userId.value='';$('userForm').elements.expectedUpdatedAt.value='';await refresh();message('User saved.');});
+};
+$('departmentForm').onsubmit=e=>{
+  e.preventDefault();const input=Object.fromEntries(new FormData(e.target));if(!input.departmentId)delete input.departmentId;
+  action(async()=>{await rpc('saveDepartment',input);e.target.reset();e.target.elements.departmentId.value='';await refresh();message('Department saved.');});
+};
+function csvValue(value) {
+  let s=String(value??'');
+  if(/^[=+\-@\t\r\n]/.test(s))s="'"+s;
+  return '"'+s.replace(/"/g,'""')+'"';
+}
+$('exportTasks').onclick=()=>{
+  const headers=['Task ID','Description','Doer','Department','Assigned at','Due date','Completed at','Priority','Status','Remarks'];
+  const rows=filteredTasks().map(t=>[t.taskId,t.description,nameOf(t.doerUserId),deptOf(t.departmentId),t.assignedAt,due(t),t.completedAt,t.priority,t.status,t.remarks]);
+  const csv='\uFEFF'+[headers,...rows].map(r=>r.map(csvValue).join(',')).join('\r\n');
+  const url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  const a=document.createElement('a');a.href=url;a.download='ERP-tasks-'+localToday()+'.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+};
 </script>
